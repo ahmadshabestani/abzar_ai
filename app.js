@@ -9,14 +9,57 @@ function add(text,who){const d=document.createElement('div');d.className='bubble
 function setBusy(b){['#homeSend','#chatSend','#chatMic'].forEach(s=>{const x=$(s);if(x)x.disabled=b})}
 function pushHistory(role,content){history.push({role,content});if(history.length>12)history.splice(0,history.length-12)}
 
+// Persian TTS: keep Gemini/chat untouched; only normalize text and select a Persian browser voice.
+function cleanForSpeech(text){
+  return String(text||'')
+    .replace(/```[\s\S]*?```/g,' ')
+    .replace(/`([^`]+)`/g,'$1')
+    .replace(/!\[[^\]]*\]\([^)]*\)/g,' ')
+    .replace(/\[([^\]]+)\]\([^)]*\)/g,'$1')
+    .replace(/^\s{0,3}#{1,6}\s*/gm,'')
+    .replace(/\*\*([^*]+)\*\*/g,'$1')
+    .replace(/__([^_]+)__/g,'$1')
+    .replace(/\*([^*]+)\*/g,'$1')
+    .replace(/_([^_]+)_/g,'$1')
+    .replace(/^\s*[-*+]\s+/gm,'')
+    .replace(/^\s*\d+[.)]\s+/gm,'')
+    .replace(/[#*_~`]/g,' ')
+    .replace(/\s{2,}/g,' ')
+    .trim();
+}
+
+function getPersianVoice(){
+  const voices=window.speechSynthesis.getVoices();
+  return voices.find(v=>/^fa(?:-|_)/i.test(v.lang))
+      || voices.find(v=>/persian|farsi|iran|فارسی/i.test(`${v.name} ${v.lang}`));
+}
+
 function speak(text){
-  if(!('speechSynthesis'in window))return;
+  if(!('speechSynthesis'in window))return toast('پخش صوت در این مرورگر پشتیبانی نمی‌شود.');
+  const clean=cleanForSpeech(text);if(!clean)return;
   window.speechSynthesis.cancel();
-  const u=new SpeechSynthesisUtterance(text);u.lang='fa-IR';u.rate=.95;u.pitch=1;
-  const voices=window.speechSynthesis.getVoices();const fa=voices.find(v=>/^fa(-|_)/i.test(v.lang));if(fa)u.voice=fa;
+
+  const u=new SpeechSynthesisUtterance(clean);
+  u.lang='fa-IR';u.rate=.92;u.pitch=1;u.volume=1;
+
+  const fa=getPersianVoice();
+  if(fa){
+    u.voice=fa;
+    u.lang=fa.lang||'fa-IR';
+  }else{
+    // Do not silently use an English voice for Persian text.
+    toast('🔊 صدای فارسی روی این دستگاه پیدا نشد. لطفاً در Chrome/Edge یک صدای فارسی نصب یا فعال کنید.');
+    return;
+  }
+
   window.speechSynthesis.speak(u);
 }
-if('speechSynthesis'in window)window.speechSynthesis.onvoiceschanged=()=>{};
+
+// Voices are often loaded asynchronously; force the browser to populate the voice list.
+if('speechSynthesis'in window){
+  window.speechSynthesis.onvoiceschanged=()=>window.speechSynthesis.getVoices();
+  setTimeout(()=>window.speechSynthesis.getVoices(),250);
+}
 
 async function askAI(message){
   let r;
